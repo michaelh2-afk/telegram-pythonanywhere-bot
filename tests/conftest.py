@@ -6,8 +6,9 @@ This lets tests run without real API keys or network connections.
 import os
 import sys
 from unittest.mock import MagicMock
+if sys.platform == "win32":
+    sys.modules['fcntl'] = MagicMock()
 
-# ── Fake environment variables ─────────────────────────────────────────────────
 os.environ["TELEGRAM_BOT_TOKEN"] = "1234567890:fake_token"
 os.environ["AI_API_KEY"] = "fake_api_key"
 # Prevent bot/config.py's webhook-secret bootstrap from creating a

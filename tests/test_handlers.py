@@ -118,68 +118,83 @@ def test_handle_message_mention_only_skipped():
 # ── /about ────────────────────────────────────────────────────────────────────
 
 
-def test_cmd_about_with_sqlite():
-    """When SQLite is configured, /about should reference SQLite."""
+def test_cmd_about_calls_ai_and_sends_reply():
+    """cmd_about should call generate() with the system prompt and relay the reply."""
     with (
-        patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.store", MagicMock()),
-        patch("bot.handlers.HF_SPACE_ID", ""),
+        patch("bot.handlers.generate", return_value="I'm Ferris!") as mock_gen,
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.send_reply") as mock_send,
+        patch("bot.handlers.bot"),
     ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
+        from bot.handlers import cmd_about
+
+        msg = make_message()
+        cmd_about(msg)
+        mock_gen.assert_called_once()
+        messages_arg = mock_gen.call_args[0][1]
+        assert any(m["role"] == "system" for m in messages_arg)
+        mock_send.assert_called_once_with(msg, "I'm Ferris!")
+
+
+def test_cmd_about_fallback_on_ai_error():
+    """On AI failure, /about should send a static fallback rather than raise."""
+    with (
+        patch("bot.handlers.generate", side_effect=Exception("timeout")),
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
         from bot.handlers import cmd_about
 
         cmd_about(make_message())
-        sent = mock_bot.send_message.call_args[0][1]
-        assert "SQLite" in sent
-        assert "stateless" not in sent
+        assert mock_bot.send_message.called
+        fallback = mock_bot.send_message.call_args[0][1]
+        assert "Ferris" in fallback
 
 
-def test_cmd_about_includes_commit_sha_when_set():
-    """When COMMIT_SHA is populated (worker booted inside a git repo),
-    /about exposes a Version line so users can validate which commit is
-    live."""
+# ── /help ─────────────────────────────────────────────────────────────────────
+
+
+def test_cmd_help_calls_ai_and_sends_reply():
+    """cmd_help should call generate() with a command list and relay the reply."""
     with (
+        patch("bot.handlers.generate", return_value="Here are the commands!") as mock_gen,
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.send_reply") as mock_send,
         patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.store", MagicMock()),
-        patch("bot.handlers.HF_SPACE_ID", ""),
-        patch("bot.handlers.COMMIT_SHA", "abc1234"),
     ):
-        from bot.handlers import cmd_about
+        mock_bot.message_handlers = []
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
+        from bot.handlers import cmd_help
 
-        cmd_about(make_message())
-        sent = mock_bot.send_message.call_args[0][1]
-        assert "Version: abc1234" in sent
+        msg = make_message(text="/help")
+        cmd_help(msg)
+        mock_gen.assert_called_once()
+        mock_send.assert_called_once_with(msg, "Here are the commands!")
 
 
-def test_cmd_about_omits_version_line_when_sha_unknown():
-    """If git rev-parse failed at boot, the Version line is dropped
-    entirely rather than showing 'unknown' — clearer for the user."""
+def test_cmd_help_fallback_on_ai_error():
+    """On AI failure, /help should fall back to sending the plain command list."""
     with (
+        patch("bot.handlers.generate", side_effect=Exception("timeout")),
+        patch("bot.handlers.keep_typing") as mock_keep,
         patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.store", MagicMock()),
-        patch("bot.handlers.HF_SPACE_ID", ""),
-        patch("bot.handlers.COMMIT_SHA", ""),
     ):
-        from bot.handlers import cmd_about
+        mock_bot.message_handlers = [
+            {"filters": {"commands": ["start"]}, "function": MagicMock(__doc__="welcome message")},
+        ]
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
+        from bot.handlers import cmd_help
 
-        cmd_about(make_message())
+        cmd_help(make_message(text="/help"))
+        assert mock_bot.send_message.called
         sent = mock_bot.send_message.call_args[0][1]
-        assert "Version" not in sent
-
-
-def test_cmd_about_without_store():
-    """When no backend is configured, /about must say stateless. Regression
-    guard for the NameError that occurred when `store` was missing from
-    bot.handlers' imports."""
-    with (
-        patch("bot.handlers.bot") as mock_bot,
-        patch("bot.handlers.store", None),
-        patch("bot.handlers.HF_SPACE_ID", ""),
-    ):
-        from bot.handlers import cmd_about
-
-        cmd_about(make_message())
-        sent = mock_bot.send_message.call_args[0][1]
-        assert "stateless" in sent
+        assert "/start" in sent
 
 
 # ── /model command ────────────────────────────────────────────────────────────

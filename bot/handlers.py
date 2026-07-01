@@ -1,10 +1,13 @@
 import os
+import random
 from datetime import datetime
-from bot.clients import bot, BOT_INFO, store
-from bot.config import COMMIT_SHA, HF_SPACE_ID, HOSTING_LABEL, MODEL, RATE_LIMIT
+from bot.clients import bot, BOT_INFO
+from bot.config import HF_SPACE_ID, RATE_LIMIT, SYSTEM_PROMPT
 from bot.ai import ask_ai
+from bot.providers import generate
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
 from bot.history import clear_history
+from bot.notes import add_note, clear_notes, get_notes
 from bot.preferences import get_provider, set_provider
 from bot.rate_limit import is_rate_limited
 
@@ -45,55 +48,167 @@ def _log(message, direction: str, text: str) -> None:
     print(f"[{ts}] {sender} → {receiver}: {snippet}", flush=True)
 
 
+def _ai_command(message, prompt, fallback):
+    """Run a one-shot AI prompt and reply, with a canned fallback on error.
+
+    Shared by the simple AI commands (/about, /joke, /fact, /compliment,
+    /quote) — each just supplies its own prompt and offline fallback text.
+    """
+    try:
+        with keep_typing(message.chat.id):
+            reply = generate(message.from_user.id, [
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ])
+        send_reply(message, reply)
+    except Exception as e:
+        print(f"Error in AI command: {e}")
+        bot.send_message(message.chat.id, fallback)
+
+
 @bot.message_handler(commands=["start"], func=is_allowed)
 def cmd_start(message):
+    """welcome message"""
     bot.send_message(
         message.chat.id,
-        "Hello! I'm your AI assistant. Send me a message to get started.\n\nUse /help to see available commands.",
+        "Hello! I'm your AI assistant to learn rust programming language.\nUse /help to see available commands.",
     )
 
 
 @bot.message_handler(commands=["help"], func=is_allowed)
 def cmd_help(message):
-    lines = [
-        "/start — welcome message",
-        "/help  — show this message",
-        "/reset — clear conversation history",
-        "/about — about this bot",
+    """show this message"""
+    cmd_list = [
+        "/start — welcome message\n"
+        "/help — show this message\n"
+        "/reset — clear your conversation history\n"
+        "/about — about this bot\n"
+        "/joke — tell a joke\n"
+        "/roll — roll a dice (1-6)\n"
+        "/fact — share a surprising fact\n"
+        "/compliment — brighten someone's day\n"
+        "/quote — an original motivational line\n"
+        "/remember — save a note: remember <text>\n"
+        "/recall — list all saved notes\n"
+        "/forget — clear all saved notes"
     ]
-    if HF_SPACE_ID:
-        lines.append("/model — switch AI provider")
-    bot.send_message(message.chat.id, "\n".join(lines))
+    bot.send_message(
+        message.chat.id,
+        "Here are the commands you can use:\n\n" + "\n".join(cmd_list),
+    )
 
 
 @bot.message_handler(commands=["reset"], func=is_allowed)
 def cmd_reset(message):
+    """clear your conversation history"""
     clear_history(message.from_user.id)
     bot.send_message(message.chat.id, "Conversation cleared. Starting fresh!")
 
 
 @bot.message_handler(commands=["about"], func=is_allowed)
 def cmd_about(message):
-    if HF_SPACE_ID:
-        provider = get_provider(message.from_user.id)
-        model_line = f"{MODEL} (main)" if provider == "main" else f"{HF_SPACE_ID} (hf)"
+    """about this bot"""
+    _ai_command(
+        message,
+        "The user typed /about. Write a short, friendly message (2-4 sentences, no technical details) "
+        "explaining who you are, what you're for, and what you can do.",
+        "I'm Ferris, your friendly Rust programming tutor on Telegram!",
+    )
+
+
+@bot.message_handler(commands=["joke"], func=is_allowed)
+def cmd_joke(message):
+    """tell a joke"""
+    _ai_command(
+        message,
+        "The user typed /joke. Tell a short, original, family-friendly joke about "
+        "programming (Rust especially welcome). Keep it to a few lines and make it land.",
+        "Why do Rustaceans stay so calm? Because they always know when to borrow and when to let go.",
+    )
+
+
+@bot.message_handler(commands=["roll"], func=is_allowed)
+def cmd_roll(message):
+    """roll a dice (1-6)"""
+    result = random.randint(1, 6)
+    bot.send_message(message.chat.id, f"🎲 You rolled a {result}!")
+
+
+@bot.message_handler(commands=["fact"], func=is_allowed)
+def cmd_fact(message):
+    """share a surprising fact"""
+    _ai_command(
+        message,
+        "The user typed /fact. Share one genuinely surprising, true fact in a sentence or two. "
+        "Pick something unexpected — surprise me. Keep it friendly and easy to understand.",
+        "Honey never spoils — archaeologists have found 3,000-year-old honey in Egyptian tombs that's still edible.",
+    )
+
+
+@bot.message_handler(commands=["compliment"], func=is_allowed)
+def cmd_compliment(message):
+    """brighten someone's day"""
+    _ai_command(
+        message,
+        "The user typed /compliment. Write one warm, genuine, original compliment to brighten "
+        "their day. Keep it short (1-2 sentences), kind, and specific enough to feel real.",
+        "You show up and keep trying, and that quiet persistence is something to be proud of.",
+    )
+
+
+@bot.message_handler(commands=["quote"], func=is_allowed)
+def cmd_quote(message):
+    """an original motivational line"""
+    _ai_command(
+        message,
+        "The user typed /quote. Write one original, motivational line (do not quote a real person). "
+        "Make it uplifting and memorable — a single sentence.",
+        "Every expert was once a beginner who refused to quit.",
+    )
+
+
+@bot.message_handler(commands=["remember"], func=is_allowed)
+def cmd_remember(message):
+    """save a note: /remember <text>"""
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.send_message(message.chat.id, "Usage: /remember <text>")
+        return
+    note = parts[1].strip()
+    if note.lower() == "me":
+        note = "you"
+    note = parts[1].strip()
+    if note.lower() == "my":
+        note = 'your'
+    if add_note(message.from_user.id, note):
+        bot.send_message(message.chat.id, "Got it — I'll remember that. 📝")
     else:
-        model_line = MODEL
-    storage_line = "SQLite" if store is not None else "stateless (no memory)"
-    lines = [
-        f"Model  : {model_line}",
-        f"Storage: {storage_line}",
-        f"Hosting: {HOSTING_LABEL}",
-    ]
-    if COMMIT_SHA:
-        lines.append(f"Version: {COMMIT_SHA}")
-    bot.send_message(message.chat.id, "\n".join(lines))
+        bot.send_message(message.chat.id, "Sorry, I couldn't save that note right now.")
+
+
+@bot.message_handler(commands=["recall"], func=is_allowed)
+def cmd_recall(message):
+    """list all saved notes"""
+    notes = get_notes(message.from_user.id)
+    if not notes:
+        bot.send_message(message.chat.id, "You have no saved notes yet. Add one with /remember <text>")
+        return
+    lines = [f"{i}. {note}" for i, note in enumerate(notes, start=1)]
+    bot.send_message(message.chat.id, "Your notes:\n\n" + "\n".join(lines))
+
+
+@bot.message_handler(commands=["forget"], func=is_allowed)
+def cmd_forget(message):
+    """clear all saved notes"""
+    clear_notes(message.from_user.id)
+    bot.send_message(message.chat.id, "All your notes have been cleared. 🧹")
 
 
 if HF_SPACE_ID:
 
     @bot.message_handler(commands=["model"], func=is_allowed)
     def cmd_model(message):
+        """switch AI provider"""
         parts = (message.text or "").split(maxsplit=1)
         if len(parts) == 1:
             current = get_provider(message.from_user.id)
