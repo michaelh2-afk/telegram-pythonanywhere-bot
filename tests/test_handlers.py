@@ -158,23 +158,20 @@ def test_cmd_about_fallback_on_ai_error():
 # ── /help ─────────────────────────────────────────────────────────────────────
 
 
-def test_cmd_help_calls_ai_and_sends_reply():
-    """cmd_help should call generate() with a command list and relay the reply."""
+def test_cmd_help_sends_static_command_list():
+    """cmd_help sends the static command list directly, without calling the AI."""
     with (
-        patch("bot.handlers.generate", return_value="Here are the commands!") as mock_gen,
-        patch("bot.handlers.keep_typing") as mock_keep,
-        patch("bot.handlers.send_reply") as mock_send,
+        patch("bot.handlers.generate") as mock_gen,
         patch("bot.handlers.bot") as mock_bot,
     ):
-        mock_bot.message_handlers = []
-        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
-        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
         from bot.handlers import cmd_help
 
         msg = make_message(text="/help")
         cmd_help(msg)
-        mock_gen.assert_called_once()
-        mock_send.assert_called_once_with(msg, "Here are the commands!")
+        mock_gen.assert_not_called()
+        assert mock_bot.send_message.called
+        sent = mock_bot.send_message.call_args[0][1]
+        assert "/help" in sent and "/joke" in sent
 
 
 def test_cmd_help_fallback_on_ai_error():
