@@ -118,11 +118,11 @@ def cmd_about(message):
 
 @bot.message_handler(commands=["joke"], func=is_allowed)
 def cmd_joke(message):
-    """tell a joke"""
+    """tell a joke about programming"""
     _ai_command(
         message,
         "The user typed /joke. Tell a short, original, family-friendly joke about "
-        "programming (Rust especially welcome). Keep it to a few lines and make it land.",
+        "programming. Keep it to a few lines and make it land.",
         "Why do Rustaceans stay so calm? Because they always know when to borrow and when to let go.",
     )
 
