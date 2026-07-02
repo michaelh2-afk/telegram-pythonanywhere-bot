@@ -203,12 +203,33 @@ switch ($Target.ToLower()) {
     'deploy-pa' {
         Assert-Env
         $deploy = Join-Path $RepoRoot 'scripts\pa_deploy.ps1'
-        # pa_deploy.ps1 needs PowerShell 7. If we're on 5.1 but pwsh exists, use it.
-        if ($PSVersionTable.PSVersion.Major -lt 7 -and (Get-Command pwsh -ErrorAction SilentlyContinue)) {
-            Invoke-Native { & pwsh -NoProfile -File $deploy }
-        } else {
-            # In-process .ps1 call: its own `exit <code>` propagates the failure.
+        if ($PSVersionTable.PSVersion.Major -ge 7) {
+            # Already on PS7+ — in-process .ps1 call; its `exit <code>` propagates.
             & $deploy
+        } else {
+            # pa_deploy.ps1 has `#requires -Version 7.0` — it uses Invoke-WebRequest
+            # -Form / -SkipHttpErrorCheck / -StatusCodeVariable, none of which exist
+            # in Windows PowerShell 5.1. Running it in-process here would fail with a
+            # cryptic ScriptRequiresUnmatchedPSVersion error, so find pwsh (installing
+            # it via scoop if missing, matching the 'install' target) and re-run under it.
+            $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+            if (-not $pwsh) {
+                Write-Host "deploy-pa needs PowerShell 7 (pwsh), which isn't installed - trying to install it via scoop..." -ForegroundColor Cyan
+                if (Install-Scoop) {
+                    Invoke-Scoop @('install', 'pwsh')
+                    Update-SessionPath
+                    $pwsh = Get-Command pwsh -ErrorAction SilentlyContinue
+                }
+            }
+            if (-not $pwsh) {
+                Write-Host "ERROR: deploy-pa requires PowerShell 7 (pwsh), which could not be found or installed." -ForegroundColor Red
+                Write-Host "  Install it with one of:" -ForegroundColor Yellow
+                Write-Host "    winget install --id Microsoft.PowerShell" -ForegroundColor Yellow
+                Write-Host "    scoop install pwsh" -ForegroundColor Yellow
+                Write-Host "  then open a NEW terminal and re-run '.\make.ps1 deploy-pa'." -ForegroundColor Yellow
+                exit 1
+            }
+            Invoke-Native { & $pwsh.Source -NoProfile -File $deploy }
         }
     }
     'claude' {
