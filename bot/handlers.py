@@ -116,14 +116,36 @@ def cmd_about(message):
     )
 
 
+# Random topics for /joke so repeated calls vary. The joke itself is always
+# written by the AI; the topic just steers it to a fresh subject each time
+# (the /joke command has no conversation history, so an identical prompt
+# tends to produce identical output).
+JOKE_TOPICS = [
+    "animals",
+    "food",
+    "school",
+    "space",
+    "the weather",
+    "sports",
+    "music",
+    "the ocean",
+    "everyday life",
+    "time travel",
+    "robots",
+    "the weekend",
+]
+
+
 @bot.message_handler(commands=["joke"], func=is_allowed)
 def cmd_joke(message):
-    """tell a joke about programming"""
+    """tell a joke"""
+    topic = random.choice(JOKE_TOPICS)
     _ai_command(
         message,
-        "The user typed /joke. Tell a short, original, family-friendly joke about "
-        "programming. Keep it to a few lines and make it land.",
-        "Why do Rustaceans stay so calm? Because they always know when to borrow and when to let go.",
+        f"The user typed /joke. Tell a short, original, family-friendly joke about {topic}. "
+        "Do NOT make it about programming, coding, or Rust. Make it different from common, "
+        "well-known jokes. Keep it to a few lines and make it land.",
+        "Sorry, I couldn't think of a joke right now — try /joke again!",
     )
 
 
