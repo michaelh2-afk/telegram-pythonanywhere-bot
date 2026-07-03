@@ -2,7 +2,7 @@ import os
 import random
 from datetime import datetime
 from bot.clients import bot, BOT_INFO
-from bot.config import HF_SPACE_ID, RATE_LIMIT, SYSTEM_PROMPT
+from bot.config import COMMIT_SHA, HF_SPACE_ID, RATE_LIMIT, SYSTEM_PROMPT
 from bot.ai import ask_ai
 from bot.providers import generate
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
@@ -91,7 +91,8 @@ def cmd_help(message):
         "/quote — an original motivational line\n"
         "/remember — save a note: remember <text>\n"
         "/recall — list all saved notes\n"
-        "/forget — clear all saved notes"
+        "/forget — clear all saved notes\n"
+        "/sha — show the live git commit SHA"
     ]
     bot.send_message(
         message.chat.id,
@@ -255,6 +256,12 @@ def cmd_forget(message):
     """clear all saved notes"""
     clear_notes(message.from_user.id)
     bot.send_message(message.chat.id, "All your notes have been cleared. 🧹")
+
+
+@bot.message_handler(commands=["sha"], func=is_allowed)
+def cmd_sha(message):
+    sha = COMMIT_SHA or "unknown"
+    bot.send_message(message.chat.id, f"Live SHA: {sha}")
 
 
 if HF_SPACE_ID:
