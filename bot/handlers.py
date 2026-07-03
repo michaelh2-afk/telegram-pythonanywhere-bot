@@ -69,9 +69,14 @@ def _ai_command(message, prompt, fallback):
 @bot.message_handler(commands=["start"], func=is_allowed)
 def cmd_start(message):
     """welcome message"""
-    bot.send_message(
-        message.chat.id,
-        "Hello! I'm your AI assistant to learn rust programming language.\nUse /help to see available commands.",
+    _ai_command(
+        message,
+        "The user just typed /start — it's their first message to you. Write a short, warm welcome "
+        "(2-3 sentences): greet them, say in one line that you help them find the best programming "
+        "language and tech direction for them and can then teach it step by step, and invite them to "
+        "type /help to see what you can do. Be friendly and encouraging, and avoid technical jargon.",
+        "Hi! 👋 I can help you find the best programming language and tech direction for you, then "
+        "teach it step by step. Type /help to see everything I can do.",
     )
 
 
