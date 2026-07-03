@@ -155,6 +155,61 @@ def test_cmd_about_fallback_on_ai_error():
         assert "Ferris" in fallback
 
 
+# ── /teach ────────────────────────────────────────────────────────────────────
+
+
+def test_cmd_teach_calls_ai_with_language():
+    """cmd_teach should pass the requested language into the AI prompt and relay the reply."""
+    with (
+        patch("bot.handlers.generate", return_value="Here's your Python lesson!") as mock_gen,
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.send_reply") as mock_send,
+        patch("bot.handlers.bot"),
+    ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
+        from bot.handlers import cmd_teach
+
+        msg = make_message(text="/teach python")
+        cmd_teach(msg)
+        mock_gen.assert_called_once()
+        messages_arg = mock_gen.call_args[0][1]
+        user_prompt = next(m["content"] for m in messages_arg if m["role"] == "user")
+        assert "python" in user_prompt
+        mock_send.assert_called_once_with(msg, "Here's your Python lesson!")
+
+
+def test_cmd_teach_no_arg_shows_usage():
+    """/teach with no language should show usage and NOT call the AI."""
+    with (
+        patch("bot.handlers.generate") as mock_gen,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_teach
+
+        cmd_teach(make_message(text="/teach"))
+        mock_gen.assert_not_called()
+        sent = mock_bot.send_message.call_args[0][1]
+        assert "Usage" in sent and "/teach" in sent
+
+
+def test_cmd_teach_fallback_on_ai_error():
+    """On AI failure, /teach should send a fallback naming the language rather than raise."""
+    with (
+        patch("bot.handlers.generate", side_effect=Exception("timeout")),
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
+        from bot.handlers import cmd_teach
+
+        cmd_teach(make_message(text="/teach rust"))
+        assert mock_bot.send_message.called
+        fallback = mock_bot.send_message.call_args[0][1]
+        assert "rust" in fallback
+
+
 # ── /help ─────────────────────────────────────────────────────────────────────
 
 
@@ -171,7 +226,7 @@ def test_cmd_help_sends_static_command_list():
         mock_gen.assert_not_called()
         assert mock_bot.send_message.called
         sent = mock_bot.send_message.call_args[0][1]
-        assert "/help" in sent and "/joke" in sent
+        assert "/help" in sent and "/joke" in sent and "/teach" in sent
 
 
 def test_cmd_help_fallback_on_ai_error():

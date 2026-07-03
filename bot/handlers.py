@@ -83,6 +83,7 @@ def cmd_help(message):
         "/help — show this message\n"
         "/reset — clear your conversation history\n"
         "/about — about this bot\n"
+        "/teach — learn a language: teach <language>\n"
         "/joke — tell a joke\n"
         "/roll — roll a dice (1-6)\n"
         "/fact — share a surprising fact\n"
@@ -113,6 +114,36 @@ def cmd_about(message):
         "The user typed /about. Write a short, friendly message (2-4 sentences, no technical details) "
         "explaining who you are, what you're for, and what you can do.",
         "I'm Ferris, your friendly Rust programming tutor on Telegram!",
+    )
+
+
+@bot.message_handler(commands=["teach"], func=is_allowed)
+def cmd_teach(message):
+    """learn a programming language: /teach <language>"""
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.send_message(
+            message.chat.id,
+            "Usage: /teach <language>\n\n"
+            "Example: /teach python\n\n"
+            "I'll teach it from the basics up toward an intermediate level. "
+            "Try a language like python, javascript, java, c++, go, or rust.",
+        )
+        return
+    language = parts[1].strip()
+    _ai_command(
+        message,
+        f"The user typed /teach {language}. They have chosen to learn the {language} programming "
+        "language, so do NOT ask quiz questions — teach it directly. Give a clear, beginner-friendly "
+        "lesson that takes a complete beginner up toward an intermediate level. Structure it as: "
+        f"(1) one line on what {language} is and what it's good for; (2) how to get started (install "
+        "and where to run code); (3) the core beginner concepts, each with a tiny code example — "
+        "variables, data types, conditionals, loops, and functions; (4) a short roadmap of "
+        "intermediate topics to grow into next; (5) one small practice-project idea and one free "
+        "resource to learn more. Keep code examples short and correct, use Markdown with fenced code "
+        f"blocks, and stay encouraging and concise. If {language} is not a real programming language, "
+        "say so kindly and suggest a few popular ones to try instead.",
+        f"Sorry, I couldn't put together a {language} lesson right now — try /teach {language} again!",
     )
 
 
