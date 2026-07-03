@@ -142,3 +142,65 @@ def register_webhook() -> str:
     if result is False:
         return f"Webhook registration: Telegram returned False for {WEBHOOK_URL}"
     return f"Webhook registered: {WEBHOOK_URL}"
+
+
+# Commands advertised in Telegram's command menu — the "Menu" button next
+# to the message box and the list shown when the user types "/". Each
+# description starts with an emoji so the menu reads nicely. The order here
+# is the order Telegram displays. /sha is intentionally omitted (it's a
+# diagnostic command, not user-facing); /model is added conditionally in
+# register_commands() when the HF provider is configured.
+MENU_COMMANDS = [
+    ("start", "👋 Welcome — what I can do"),
+    ("help", "📋 List every command"),
+    ("teach", "📚 Learn a language: /teach python"),
+    ("level", "🎚️ Set your learning level"),
+    ("quiz", "❓ Test your knowledge: /quiz python"),
+    ("explain", "💡 Explain a term: /explain recursion"),
+    ("example", "💻 Show a code example: /example loops"),
+    ("roadmap", "🗺️ A learning roadmap: /roadmap python"),
+    ("about", "🤖 About this bot"),
+    ("reset", "🧹 Clear our conversation"),
+    ("joke", "😄 Tell a joke"),
+    ("roll", "🎲 Roll a dice (1-6)"),
+    ("fact", "✨ A surprising fact"),
+    ("compliment", "🌟 Brighten your day"),
+    ("quote", "📜 A motivational line"),
+    ("remember", "📝 Save a note: /remember <text>"),
+    ("recall", "📒 List your saved notes"),
+    ("forget", "🗑️ Clear your saved notes"),
+]
+
+
+def register_commands() -> str:
+    """Register the bot's command menu with Telegram (the "Menu" button and
+    the "/" auto-complete list). Idempotent — Telegram treats a repeated
+    setMyCommands with the same list as a no-op. Never raises: failures are
+    caught so a network blip doesn't crash worker boot.
+
+    /model is advertised only when the HF provider is configured, mirroring
+    its conditional handler registration in bot/handlers.py.
+    """
+    from telebot.types import BotCommand
+    from bot.config import HF_SPACE_ID
+
+    commands = list(MENU_COMMANDS)
+    if HF_SPACE_ID:
+        commands.append(("model", "🔀 Switch AI provider"))
+    bot_commands = [BotCommand(name, description) for name, description in commands]
+
+    # Same PA-outbound-proxy-blip retry shape as register_webhook().
+    result = None
+    for attempt in range(3):
+        try:
+            result = bot.set_my_commands(bot_commands)
+            break
+        except Exception as e:
+            if attempt == 2:
+                return f"Command menu registration failed: {e}"
+            print(f"set_my_commands attempt {attempt + 1}/3 failed, retrying: {e}")
+            time.sleep(1 + attempt)
+
+    if result is False:
+        return "Command menu registration: Telegram returned False"
+    return f"Command menu registered ({len(bot_commands)} commands)"

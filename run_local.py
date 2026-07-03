@@ -85,7 +85,7 @@ def preflight() -> None:
 preflight()
 
 import bot.handlers  # noqa: F401  — registers all @bot.message_handler decorators
-from bot.clients import bot, BOT_INFO
+from bot.clients import bot, BOT_INFO, register_commands
 
 
 def main() -> None:
@@ -114,6 +114,9 @@ def main() -> None:
             return
         bot.remove_webhook()
         print("Webhook removed.\n")
+
+    # Register the command menu (the "/" list) so it shows up while testing.
+    print(register_commands())
 
     print("Send your bot a message on Telegram to try it out.")
     print("Press Ctrl+C to stop.\n")
