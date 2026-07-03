@@ -66,3 +66,67 @@ def test_set_provider_redis_down_returns_false():
         mock_store.set.side_effect = Exception("connection refused")
         from bot.preferences import set_provider
         assert set_provider(123, "main") is False
+
+
+# ── learning level ──────────────────────────────────────────────────────────────
+
+
+def test_get_level_default_when_unset():
+    with patch("bot.preferences.store") as mock_store:
+        mock_store.get.return_value = None
+        from bot.preferences import get_level
+        assert get_level(123) == "beginner"
+
+
+def test_get_level_returns_saved():
+    with patch("bot.preferences.store") as mock_store:
+        mock_store.get.return_value = "intermediate"
+        from bot.preferences import get_level
+        assert get_level(123) == "intermediate"
+
+
+def test_get_level_ignores_invalid_value():
+    with patch("bot.preferences.store") as mock_store:
+        mock_store.get.return_value = "expert"
+        from bot.preferences import get_level
+        assert get_level(123) == "beginner"
+
+
+def test_get_level_store_down_returns_default():
+    with patch("bot.preferences.store") as mock_store:
+        mock_store.get.side_effect = Exception("connection refused")
+        from bot.preferences import get_level
+        assert get_level(123) == "beginner"
+
+
+def test_get_level_store_none_returns_default():
+    with patch("bot.preferences.store", None):
+        from bot.preferences import get_level
+        assert get_level(123) == "beginner"
+
+
+def test_set_level_saves_with_no_ttl():
+    with patch("bot.preferences.store") as mock_store:
+        from bot.preferences import set_level
+        assert set_level(123, "intermediate") is True
+        mock_store.set.assert_called_once_with("level:123", "intermediate")
+
+
+def test_set_level_rejects_invalid():
+    with patch("bot.preferences.store") as mock_store:
+        from bot.preferences import set_level
+        assert set_level(123, "expert") is False
+        mock_store.set.assert_not_called()
+
+
+def test_set_level_store_none_returns_false():
+    with patch("bot.preferences.store", None):
+        from bot.preferences import set_level
+        assert set_level(123, "beginner") is False
+
+
+def test_set_level_store_down_returns_false():
+    with patch("bot.preferences.store") as mock_store:
+        mock_store.set.side_effect = Exception("connection refused")
+        from bot.preferences import set_level
+        assert set_level(123, "beginner") is False

@@ -89,6 +89,12 @@ HF_SPACE_ID = os.environ.get("HF_SPACE_ID", "").strip()
 HF_TOKEN = os.environ.get("HF_TOKEN", "").strip()  # optional, for private spaces
 DEFAULT_PROVIDER = "main"
 
+# Default learning level for /teach and /level. Users change it with the
+# /level command; it decides where /teach starts (it always teaches up to
+# an intermediate level). Used as the fallback when no level is saved or
+# the bot runs without a database.
+DEFAULT_LEVEL = "beginner"
+
 # Storage — optional. When SQLITE_PATH is unset the bot runs in
 # stateless mode: history / rate limiting / preferences / dedupe all
 # degrade gracefully (the consumer modules in bot/ check `store is

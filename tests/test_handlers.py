@@ -210,6 +210,26 @@ def test_cmd_teach_fallback_on_ai_error():
         assert "rust" in fallback
 
 
+def test_cmd_teach_uses_saved_level_in_prompt():
+    """cmd_teach should feed the user's saved level into the AI prompt."""
+    with (
+        patch("bot.handlers.get_level", return_value="intermediate"),
+        patch("bot.handlers.generate", return_value="lesson") as mock_gen,
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.send_reply"),
+        patch("bot.handlers.bot"),
+    ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
+        from bot.handlers import cmd_teach
+
+        cmd_teach(make_message(text="/teach python"))
+        user_prompt = next(
+            m["content"] for m in mock_gen.call_args[0][1] if m["role"] == "user"
+        )
+        assert "intermediate" in user_prompt
+
+
 # ── /help ─────────────────────────────────────────────────────────────────────
 
 
@@ -227,6 +247,7 @@ def test_cmd_help_sends_static_command_list():
         assert mock_bot.send_message.called
         sent = mock_bot.send_message.call_args[0][1]
         assert "/help" in sent and "/joke" in sent and "/teach" in sent
+        assert "/level" in sent and "/quiz" in sent
 
 
 def test_cmd_help_fallback_on_ai_error():
@@ -272,6 +293,128 @@ def test_cmd_sha_reports_unknown_when_git_sha_unavailable():
 
         cmd_sha(make_message())
         mock_bot.send_message.assert_called_once_with(456, "Live SHA: unknown")
+
+
+# ── /level ─────────────────────────────────────────────────────────────────────
+
+
+def test_cmd_level_no_arg_shows_current():
+    with (
+        patch("bot.handlers.get_level", return_value="beginner"),
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_level
+
+        cmd_level(make_message(text="/level"))
+        sent = mock_bot.send_message.call_args[0][1]
+        assert "beginner" in sent
+        assert "/level intermediate" in sent
+
+
+def test_cmd_level_sets_valid_level():
+    with (
+        patch("bot.handlers.set_level", return_value=True) as mock_set,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_level
+
+        cmd_level(make_message(text="/level intermediate"))
+        mock_set.assert_called_once_with(123, "intermediate")
+        assert "intermediate" in mock_bot.send_message.call_args[0][1]
+
+
+def test_cmd_level_invalid_choice():
+    with (
+        patch("bot.handlers.set_level") as mock_set,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_level
+
+        cmd_level(make_message(text="/level expert"))
+        mock_set.assert_not_called()
+        assert "Invalid" in mock_bot.send_message.call_args[0][1]
+
+
+def test_cmd_level_save_failure_reports_error():
+    with (
+        patch("bot.handlers.set_level", return_value=False),
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        from bot.handlers import cmd_level
+
+        cmd_level(make_message(text="/level beginner"))
+        assert "Could not save" in mock_bot.send_message.call_args[0][1]
+
+
+# ── /quiz, /explain, /example, /roadmap ─────────────────────────────────────────
+
+
+def _run_ai_arg_command(cmd, text):
+    """Call an AI-backed command with generate/keep_typing/send_reply patched;
+    return the user-role prompt string that was sent to the AI."""
+    with (
+        patch("bot.handlers.generate", return_value="ok") as mock_gen,
+        patch("bot.handlers.keep_typing") as mock_keep,
+        patch("bot.handlers.send_reply") as mock_send,
+        patch("bot.handlers.bot"),
+    ):
+        mock_keep.return_value.__enter__ = MagicMock(return_value=None)
+        mock_keep.return_value.__exit__ = MagicMock(return_value=None)
+        cmd(make_message(text=text))
+        mock_gen.assert_called_once()
+        mock_send.assert_called_once()
+        return next(m["content"] for m in mock_gen.call_args[0][1] if m["role"] == "user")
+
+
+def _no_arg_usage_message(cmd, text):
+    """Call an AI-backed command with no argument; assert it skips the AI and return the reply."""
+    with (
+        patch("bot.handlers.generate") as mock_gen,
+        patch("bot.handlers.bot") as mock_bot,
+    ):
+        cmd(make_message(text=text))
+        mock_gen.assert_not_called()
+        return mock_bot.send_message.call_args[0][1]
+
+
+def test_cmd_quiz_calls_ai_with_language():
+    from bot.handlers import cmd_quiz
+    assert "python" in _run_ai_arg_command(cmd_quiz, "/quiz python")
+
+
+def test_cmd_quiz_no_arg_shows_usage():
+    from bot.handlers import cmd_quiz
+    assert "Usage" in _no_arg_usage_message(cmd_quiz, "/quiz")
+
+
+def test_cmd_explain_calls_ai_with_term():
+    from bot.handlers import cmd_explain
+    assert "recursion" in _run_ai_arg_command(cmd_explain, "/explain recursion")
+
+
+def test_cmd_explain_no_arg_shows_usage():
+    from bot.handlers import cmd_explain
+    assert "Usage" in _no_arg_usage_message(cmd_explain, "/explain")
+
+
+def test_cmd_example_calls_ai_with_topic():
+    from bot.handlers import cmd_example
+    assert "python loops" in _run_ai_arg_command(cmd_example, "/example python loops")
+
+
+def test_cmd_example_no_arg_shows_usage():
+    from bot.handlers import cmd_example
+    assert "Usage" in _no_arg_usage_message(cmd_example, "/example")
+
+
+def test_cmd_roadmap_calls_ai_with_language():
+    from bot.handlers import cmd_roadmap
+    assert "python" in _run_ai_arg_command(cmd_roadmap, "/roadmap python")
+
+
+def test_cmd_roadmap_no_arg_shows_usage():
+    from bot.handlers import cmd_roadmap
+    assert "Usage" in _no_arg_usage_message(cmd_roadmap, "/roadmap")
 
 
 # ── /model command ────────────────────────────────────────────────────────────

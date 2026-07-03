@@ -8,7 +8,7 @@ from bot.providers import generate
 from bot.helpers import is_allowed, keep_typing, send_reply, should_respond
 from bot.history import clear_history
 from bot.notes import add_note, clear_notes, get_notes
-from bot.preferences import get_provider, set_provider
+from bot.preferences import get_level, get_provider, set_level, set_provider
 from bot.rate_limit import is_rate_limited
 
 # Verbose console logging for local dev and teaching. Enabled by
@@ -84,6 +84,11 @@ def cmd_help(message):
         "/reset — clear your conversation history\n"
         "/about — about this bot\n"
         "/teach — learn a language: teach <language>\n"
+        "/level — set your learning level: level <beginner|elementary|intermediate>\n"
+        "/quiz — test your knowledge: quiz <language>\n"
+        "/explain — explain a term: explain <term>\n"
+        "/example — show a code example: example <topic>\n"
+        "/roadmap — a learning roadmap: roadmap <language>\n"
         "/joke — tell a joke\n"
         "/roll — roll a dice (1-6)\n"
         "/fact — share a surprising fact\n"
@@ -118,33 +123,167 @@ def cmd_about(message):
     )
 
 
+# Maps a saved learning level to a short description of the learner, so the
+# learning commands can pitch at the right place. The lesson always aims up
+# to a solid intermediate level; the level just moves the starting line.
+LEVEL_AUDIENCE = {
+    "beginner": "a complete beginner who has never written code before",
+    "elementary": "someone who knows only the very basics (variables, printing, simple loops) and wants to go further",
+    "intermediate": "someone already comfortable with the basics who wants to reach a solid intermediate level",
+}
+
+
 @bot.message_handler(commands=["teach"], func=is_allowed)
 def cmd_teach(message):
     """learn a programming language: /teach <language>"""
+    level = get_level(message.from_user.id)
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2 or not parts[1].strip():
         bot.send_message(
             message.chat.id,
             "Usage: /teach <language>\n\n"
             "Example: /teach python\n\n"
-            "I'll teach it from the basics up toward an intermediate level. "
+            f"I'll teach it from your level (currently: {level}) up toward an intermediate "
+            "level, explaining every new term along the way.\n"
+            "Change your level anytime with /level. "
             "Try a language like python, javascript, java, c++, go, or rust.",
         )
         return
     language = parts[1].strip()
+    audience = LEVEL_AUDIENCE.get(level, LEVEL_AUDIENCE["beginner"])
     _ai_command(
         message,
-        f"The user typed /teach {language}. They have chosen to learn the {language} programming "
-        "language, so do NOT ask quiz questions — teach it directly. Give a clear, beginner-friendly "
-        "lesson that takes a complete beginner up toward an intermediate level. Structure it as: "
-        f"(1) one line on what {language} is and what it's good for; (2) how to get started (install "
-        "and where to run code); (3) the core beginner concepts, each with a tiny code example — "
-        "variables, data types, conditionals, loops, and functions; (4) a short roadmap of "
-        "intermediate topics to grow into next; (5) one small practice-project idea and one free "
-        "resource to learn more. Keep code examples short and correct, use Markdown with fenced code "
-        f"blocks, and stay encouraging and concise. If {language} is not a real programming language, "
-        "say so kindly and suggest a few popular ones to try instead.",
+        f"The user typed /teach {language}. Their self-reported learning level is '{level}': "
+        f"teach as if to {audience}. They have chosen to learn the {language} programming "
+        "language, so do NOT ask quiz questions — teach it directly. Give a clear lesson that "
+        "starts from their level and takes them up toward a solid intermediate level. "
+        "IMPORTANT: explain every technical term the first time you use it, in plain language a "
+        "learner at this level understands (a short parenthesis or one simple sentence per term). "
+        "Structure it as: "
+        f"(1) one line on what {language} is and what it's good for; (2) how to get started "
+        "(install and where to run code) — you may skip this if the level is intermediate; "
+        "(3) the core concepts to learn at this level, each with a tiny code example; (4) a short "
+        "roadmap of the next intermediate topics to grow into; (5) one small practice-project idea "
+        "and one free resource. Keep code examples short and correct, use Markdown with fenced code "
+        f"blocks, and stay encouraging and concise. If {language} is not a real programming "
+        "language, say so kindly and suggest a few popular ones to try instead.",
         f"Sorry, I couldn't put together a {language} lesson right now — try /teach {language} again!",
+    )
+
+
+@bot.message_handler(commands=["level"], func=is_allowed)
+def cmd_level(message):
+    """set your learning level: /level <beginner|elementary|intermediate>"""
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) == 1:
+        current = get_level(message.from_user.id)
+        bot.send_message(
+            message.chat.id,
+            f"Your current level: {current}\n\n"
+            "Options:\n"
+            "/level beginner — you've never programmed before\n"
+            "/level elementary — you know the very basics\n"
+            "/level intermediate — you're comfortable with the basics\n\n"
+            "Your level decides where /teach starts — it always teaches up toward an "
+            "intermediate level.",
+        )
+        return
+    choice = parts[1].strip().lower()
+    if choice not in ("beginner", "elementary", "intermediate"):
+        bot.send_message(
+            message.chat.id,
+            "Invalid level. Use: /level beginner, /level elementary, or /level intermediate",
+        )
+        return
+    if not set_level(message.from_user.id, choice):
+        bot.send_message(
+            message.chat.id,
+            "Could not save your level — the bot may be running without a database. Try again later.",
+        )
+        return
+    bot.send_message(
+        message.chat.id,
+        f"Got it — your level is now {choice}. /teach will start from there. 🎯",
+    )
+
+
+@bot.message_handler(commands=["quiz"], func=is_allowed)
+def cmd_quiz(message):
+    """quiz yourself on a language: /quiz <language>"""
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.send_message(message.chat.id, "Usage: /quiz <language>\n\nExample: /quiz python")
+        return
+    language = parts[1].strip()
+    level = get_level(message.from_user.id)
+    _ai_command(
+        message,
+        f"The user typed /quiz {language}. Make a short self-contained quiz to test their "
+        f"{language} knowledge at a '{level}' level. Do NOT ask the questions interactively. "
+        "First list 5 clear, numbered questions (a mix of multiple-choice and short-answer). Then "
+        "write 'Answers below — no peeking!' followed by a few blank lines, then an answer key "
+        "with a one-line explanation for each. Keep it concise and use Markdown.",
+        f"Sorry, I couldn't make a {language} quiz right now — try /quiz {language} again!",
+    )
+
+
+@bot.message_handler(commands=["explain"], func=is_allowed)
+def cmd_explain(message):
+    """explain a programming term: /explain <term>"""
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.send_message(message.chat.id, "Usage: /explain <term>\n\nExample: /explain recursion")
+        return
+    term = parts[1].strip()
+    level = get_level(message.from_user.id)
+    _ai_command(
+        message,
+        f"The user typed /explain {term}. Explain the programming concept or term '{term}' in "
+        f"simple, plain language suitable for a '{level}'-level learner. Define any jargon you "
+        "use. Include one tiny code example if it helps. Keep it short — a few sentences plus the "
+        f"example — and use Markdown. If '{term}' is not a programming term, say so briefly and "
+        "give the closest useful explanation.",
+        f"Sorry, I couldn't explain '{term}' right now — try /explain {term} again!",
+    )
+
+
+@bot.message_handler(commands=["example"], func=is_allowed)
+def cmd_example(message):
+    """show a code example: /example <topic>"""
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.send_message(message.chat.id, "Usage: /example <topic>\n\nExample: /example python loops")
+        return
+    topic = parts[1].strip()
+    level = get_level(message.from_user.id)
+    _ai_command(
+        message,
+        f"The user typed /example {topic}. Show one short, correct, well-commented code example "
+        f"that demonstrates '{topic}', aimed at a '{level}'-level learner. Put the code in a "
+        "Markdown fenced code block, then add 1-3 sentences explaining how it works and defining "
+        "any new term. Keep it focused on this one example.",
+        f"Sorry, I couldn't put together an example for '{topic}' right now — try /example {topic} again!",
+    )
+
+
+@bot.message_handler(commands=["roadmap"], func=is_allowed)
+def cmd_roadmap(message):
+    """learning roadmap for a language: /roadmap <language>"""
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.send_message(message.chat.id, "Usage: /roadmap <language>\n\nExample: /roadmap python")
+        return
+    language = parts[1].strip()
+    level = get_level(message.from_user.id)
+    _ai_command(
+        message,
+        f"The user typed /roadmap {language}. Give a step-by-step learning roadmap for {language} "
+        f"that starts from a '{level}' level and goes up to a solid intermediate level. Present it "
+        "as an ordered list of 5-8 milestones; for each, name the topics to learn and one thing to "
+        "build to practice. End with one or two good free resources. Explain any technical term you "
+        f"use. Keep it concise and use Markdown. If {language} is not a real programming language, "
+        "say so kindly and suggest alternatives.",
+        f"Sorry, I couldn't build a {language} roadmap right now — try /roadmap {language} again!",
     )
 
 
